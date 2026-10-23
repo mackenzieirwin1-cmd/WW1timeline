@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WWI Timeline Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* Layout concept: a field-office ledger. An event deck and a dispatch panel sit above a five-year rail; cards move from the deck onto the rail, then get ordered inside each year. */
+:root {
+  --bg: #eceff3;
+  --surface: #ffffff;
+  --surface-2: #e2e7ed;
+  --line: #c3cbd5;
+  --fg: #19222d;
+  --muted: #4f5d6c;
+  --accent: #b8271d;
+  --accent-ink: #ffffff;
+  --good: #1c6e45;
+  --good-bg: #dcf0e5;
+  --warn: #8a4b00;
+  --warn-bg: #fdecd0;
+  --t-outbreak: #2a5f9e;
+  --t-fight: #7a5a12;
+  --t-home: #8a3a69;
+  --font-display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif;
+  --font-body: "Source Sans 3", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11161c; --surface: #19202a; --surface-2: #232c38; --line: #364352;
+    --fg: #e9eef3; --muted: #a0aebc; --accent: #ee5a4d; --accent-ink: #1a0b09;
+    --good: #66d295; --good-bg: #1b3a2b; --warn: #f2b35c; --warn-bg: #3b2d14;
+    --t-outbreak: #86b4ee; --t-fight: #dcb56a; --t-home: #e690c4;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11161c; --surface: #19202a; --surface-2: #232c38; --line: #364352;
+  --fg: #e9eef3; --muted: #a0aebc; --accent: #ee5a4d; --accent-ink: #1a0b09;
+  --good: #66d295; --good-bg: #1b3a2b; --warn: #f2b35c; --warn-bg: #3b2d14;
+  --t-outbreak: #86b4ee; --t-fight: #dcb56a; --t-home: #e690c4;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, [tabindex]:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3, h4 { margin: 0; text-wrap: balance; }
+
+/* header */
+.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-end; justify-content: space-between; }
+.top h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(2.1rem, 6vw, 3.3rem); line-height: 1; text-transform: uppercase; letter-spacing: .01em; }
+.top h1 span { color: var(--accent); }
+.top p { margin: 6px 0 0; color: var(--muted); max-width: 62ch; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 4px; padding: 8px 14px; font-weight: 600; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.08); background: var(--accent); }
+.btn.small { padding: 4px 10px; font-size: .875rem; }
+.btn[disabled] { opacity: .5; cursor: default; }
+
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+.steps li { font-family: var(--font-mono); font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); border-top: 3px solid var(--line); padding-top: 6px; }
+.steps li.on { color: var(--fg); border-top-color: var(--accent); }
+.steps li.done { color: var(--good); border-top-color: var(--good); }
+.bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--accent); transition: width .35s ease; }
+.progress-label { font-family: var(--font-mono); font-size: .8rem; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 6px; }
+
+/* panels */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px; }
+.stage1 { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 20px; align-items: start; }
+.stage1 .insp { order: 2; } .stage1 .deck { order: 1; }
+.label { font-family: var(--font-mono); font-size: .75rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.deck h2, .insp h2.k, .panel h2 { font-family: var(--font-display); font-size: 1.5rem; line-height: 1.1; font-weight: 700; }
+.deck-list { list-style: none; margin: 12px 0 0; padding: 0 4px 0 0; display: flex; flex-direction: column; gap: 6px; max-height: 360px; overflow-y: auto; }
+.deck-item { width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+.deck-item:hover { background: var(--surface-2); }
+.deck-item[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--surface-2); }
+.deck-item b { font-weight: 600; }
+.tag { font-family: var(--font-mono); font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+.tag i { width: 9px; height: 9px; display: inline-block; background: var(--c); }
+.th-outbreak { --c: var(--t-outbreak); } .th-fight { --c: var(--t-fight); } .th-home { --c: var(--t-home); }
+.insp h3 { font-family: var(--font-display); font-size: clamp(1.7rem, 4vw, 2.3rem); font-weight: 700; line-height: 1.05; margin: 8px 0 8px; }
+.clue { font-size: 1.1rem; margin: 0 0 14px; max-width: 58ch; }
+.ybtns { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 12px; }
+.ybtn { font-family: var(--font-display); font-weight: 700; font-size: 1.6rem; line-height: 1; min-width: 86px; padding: 10px 14px; border: 2px solid var(--fg); background: var(--surface); border-radius: 4px; }
+.ybtn:hover { background: var(--fg); color: var(--bg); }
+.fb { min-height: 3.2em; border-radius: 4px; padding: 10px 12px; background: var(--surface-2); font-size: .98rem; }
+.fb.good { background: var(--good-bg); color: var(--fg); }
+.fb.warn { background: var(--warn-bg); }
+.fb strong { font-weight: 700; }
+.fb.warn strong { color: var(--warn); } .fb.good strong { color: var(--good); }
+.hints { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.hints li { font-size: .95rem; padding-left: 12px; border-left: 2px solid var(--line); color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.hint-line { font-size: .85rem; color: var(--muted); margin-top: 10px; }
+
+/* timeline rail */
+.rail { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.year { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 0 12px 12px; min-height: 160px; display: flex; flex-direction: column; gap: 8px; position: relative; }
+.year.over { border-color: var(--accent); background: var(--surface-2); }
+.yhead { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 10px; position: relative; }
+.yhead::before { content: ""; position: absolute; left: -12px; right: -12px; top: 0; height: 4px; background: var(--fg); }
+.year:first-child .yhead::before { left: -12px; }
+.yhead b { font-family: var(--font-display); font-size: 2.3rem; font-weight: 700; line-height: 1; letter-spacing: .01em; }
+.yhead .count { font-family: var(--font-mono); font-size: .75rem; color: var(--muted); }
+.placeholder { font-family: var(--font-mono); font-size: .75rem; color: var(--muted); border: 1px dashed var(--line); border-radius: 4px; padding: 14px 8px; text-align: center; }
+.ev { border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; background: var(--bg); display: flex; flex-direction: column; gap: 4px; }
+.ev h4 { font-family: var(--font-body); font-size: .98rem; font-weight: 700; line-height: 1.25; }
+.ev .when { font-family: var(--font-mono); font-size: .72rem; color: var(--muted); }
+.ev .why { margin: 4px 0 0; font-size: .92rem; }
+.ev .why small { display: block; margin-top: 4px; font-family: var(--font-mono); color: var(--muted); }
+.ev .toggle { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--accent); font-size: .85rem; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.ev.new { animation: pop .5s ease; }
+@keyframes pop { from { transform: scale(.94); box-shadow: 0 0 0 3px var(--accent); } to { transform: none; box-shadow: 0 0 0 0 transparent; } }
+.ev.ok { border-color: var(--good); }
+.ev.locked { background: var(--surface); }
+.mv { display: flex; gap: 6px; margin-top: 4px; }
+.mv button { flex: 1; border: 1px solid var(--line); background: var(--surface); border-radius: 4px; padding: 3px 0; font-size: 1rem; line-height: 1.2; }
+.mv button:hover:not([disabled]) { background: var(--surface-2); }
+.mv button[disabled] { opacity: .35; cursor: default; }
+.mark { font-family: var(--font-mono); font-size: .75rem; color: var(--good); }
+.next { border: 2px dashed var(--line); border-radius: 6px; padding: 12px 14px; color: var(--muted); font-size: .95rem; }
+.next b { color: var(--fg); }
+
+/* results */
+.results { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.big { font-family: var(--font-display); font-size: 3.2rem; font-weight: 700; line-height: 1; }
+.themes { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.trow { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center; font-size: .9rem; }
+.trow .meter { height: 10px; background: var(--surface-2); border-radius: 2px; overflow: hidden; }
+.trow .meter i { display: block; height: 100%; background: var(--c); }
+.review { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+.review li { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; font-size: .95rem; }
+.review span { font-family: var(--font-mono); font-size: .78rem; color: var(--muted); white-space: nowrap; }
+.copied { font-size: .85rem; color: var(--good); align-self: center; }
+
+@media (max-width: 1020px) {
+  .rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 820px) {
+  .stage1 { grid-template-columns: minmax(0, 1fr); }
+  .stage1 .insp { order: 1; } .stage1 .deck { order: 2; }
+  .results { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .rail { grid-template-columns: minmax(0, 1fr); }
+  .ybtn { flex: 1 1 28%; min-width: 0; }
+  .trow { grid-template-columns: 90px 1fr auto; }
+}
+@media (prefers-reduced-motion: reduce) { .ev.new { animation: none; } .bar > i { transition: none; } }
+</style>
+
+<style>html{color-scheme:light dark}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <header class="top">
+    <div>
+      <h1>WWI Timeline <span>Builder</span></h1>
+      <p>Place each event in the year it happened, then put 1914 in order. You get hints if you are off, and a full timeline at the end.</p>
+    </div>
+    <button class="btn" id="reset" type="button">Start over</button>
+  </header>
+  <div>
+    <ol class="steps" id="steps" aria-label="Steps"></ol>
+  </div>
+  <div>
+    <div class="progress-label"><span id="plabel"></span><span id="pstage"></span></div>
+    <div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" id="pbar"><i id="pfill" style="width:0%"></i></div>
+  </div>
+  <div id="main"></div>
+  <section aria-label="Timeline">
+    <div class="rail" id="rail"></div>
+  </section>
+  <div class="next" id="next"><b>Still to come:</b> Russia leaves the war, the United States joins, the Armistice and the Treaty of Versailles. These get added to the timeline as we finish the unit.</div>
+</div>
+
+<script>
+(function () {
+  var YEARS = [1914, 1915, 1916, 1917, 1918];
+  var THEMES = {
+    outbreak: { name: "Outbreak" },
+    fight: { name: "Fighting" },
+    home: { name: "Home front" }
+  };
+  // Events are listed in true chronological order.
+  var EVENTS = [
+    { id: "assassination", year: 1914, when: "June 1914", theme: "outbreak", anchor: true, slides: "slide 4",
+      title: "Franz Ferdinand is assassinated",
+      clue: "In Sarajevo, a Bosnian Serb nationalist shoots the heir to the Austro-Hungarian throne.",
+      why: "Gavrilo Princip's shot was the spark of the war, but militarism, alliances, imperialism and nationalism had been building tension for years.",
+      hints: [] },
+    { id: "serbia", year: 1914, when: "July 1914", theme: "outbreak", slides: "slides 22, 26",
+      title: "Austria-Hungary declares war on Serbia",
+      clue: "Blaming Serbia for the assassination, a large empire goes to war with its small neighbour. Russia starts to mobilize.",
+      why: "This began the July Crisis. Alliances pulled one country after another into the war.",
+      hints: ["This follows the assassination by only a few weeks.", "The assassination and this declaration of war happen in the same summer."] },
+    { id: "belgium", year: 1914, when: "August 1914", theme: "outbreak", slides: "slides 24, 26",
+      title: "Germany invades Belgium",
+      clue: "Following the Schlieffen Plan, German troops march through a neutral country to reach France and capture Paris quickly.",
+      why: "Germany planned to beat France fast, then turn to fight Russia. Invading neutral Belgium brought Britain into the war.",
+      hints: ["The Schlieffen Plan was built for speed, to win before the war could drag on.", "This is one of the very first moves of the war."] },
+    { id: "britain", year: 1914, when: "August 1914", theme: "outbreak", slides: "slides 26, 32, 37",
+      title: "Britain declares war, and Canada is at war too",
+      clue: "Britain answers the invasion of Belgium. Canada is part of the British Empire, so it is at war without a vote.",
+      why: "Canada had no say at first. PM Borden offered 25,000 troops, and more than 30,000 volunteered in the first month.",
+      hints: ["Britain reacts to the German invasion of Belgium right away.", "Canada joins in the first weeks of the war."] },
+    { id: "wma", year: 1914, when: "August 1914", theme: "home", slides: "slides 51 to 54",
+      title: "The War Measures Act is passed",
+      clue: "The government gives itself huge emergency powers: it can censor mail and detain people without charges.",
+      why: "The Act was used to intern more than 8,500 immigrants from \"enemy\" countries, and over 500,000 had to carry identity cards.",
+      hints: ["The government wanted these powers as soon as Canada was at war.", "It is passed within weeks of Canada entering the war."] },
+    { id: "sail", year: 1914, when: "October 1914", theme: "outbreak", slides: "slides 38, 39, 47",
+      title: "Canadian volunteers sail for England",
+      clue: "After training at Valcartier, Quebec, 32,000 volunteers set off on 32 ships.",
+      why: "Training brought Canadians from different regions together and helped build a national identity.",
+      hints: ["Volunteers needed some training first, so this is soon after the declaration of war.", "This happens in the same year the war begins."] },
+    { id: "stalemate", year: 1914, when: "December 1914", theme: "fight", slides: "slide 27",
+      title: "Trenches form a stalemate on the Western Front",
+      clue: "The fast German advance runs out of steam. Both armies dig in, and trenches stretch from Switzerland to the English Channel.",
+      why: "The war many expected to be \"home by Christmas\" became a stalemate. The land between the armies was called No Man's Land.",
+      hints: ["Volunteers expected to be home by Christmas. This is what happened instead.", "This is the end of the first year of the war."] },
+    { id: "ypres", year: 1915, when: "April 1915", theme: "fight", slides: "slides 94, 97",
+      title: "Second Battle of Ypres",
+      clue: "Germany releases chlorine gas, the first poison gas attack on the Western Front. It is Canada's first big battle.",
+      why: "Thousands died within minutes. Some Canadians held handkerchiefs soaked in urine over their faces for protection.",
+      hints: ["The trenches are already dug. This is the first big spring offensive after the stalemate.", "This is the year after the war began."] },
+    { id: "lusitania", year: 1915, when: "May 1915", theme: "fight", slides: "slide 142",
+      title: "A U-boat sinks the Lusitania",
+      clue: "A German submarine torpedoes a passenger ship, and about 1,200 people die.",
+      why: "It showed how dangerous U-boats were. The Allies later answered with convoys, packs of ships travelling together.",
+      hints: ["This is early in the submarine war, long before the Somme.", "It happens in the same year as the Second Battle of Ypres."] },
+    { id: "manitoba", year: 1916, when: "January 1916", theme: "home", slides: "slide 162",
+      title: "Manitoba lets women vote",
+      clue: "A prairie province becomes the first in Canada to give women the vote in provincial elections.",
+      why: "Women's wartime work as nurses, factory workers and volunteers strengthened the case for the vote.",
+      hints: ["Women's war work had been building this case for more than a year, but the federal vote came later.", "This is the middle year of the war."] },
+    { id: "jutland", year: 1916, when: "May 1916", theme: "fight", slides: "slide 145",
+      title: "Battle of Jutland",
+      clue: "The only major naval battle of the war: the British and German fleets meet in the North Sea.",
+      why: "Germany could not match Britain's navy, so it leaned on U-boats. Canada's own navy had only two ships.",
+      hints: ["This is the middle of the war, and it is a naval battle, not a land battle.", "It happens a few weeks before the Somme."] },
+    { id: "somme", year: 1916, when: "July 1916", theme: "fight", slides: "slides 103, 106",
+      title: "Battle of the Somme",
+      clue: "Soldiers march across open ground toward German machine guns. More than a million casualties, and the tank appears for the first time.",
+      why: "The Allies gained only 9.7 km. The Royal Newfoundland Regiment lost 85% of its men in 30 minutes.",
+      hints: ["This is the middle year of the war, after Ypres and before Vimy Ridge.", "The German army was exhausted by the following year."] },
+    { id: "uboat", year: 1917, when: "February 1917", theme: "fight", slides: "slide 142",
+      title: "Germany declares unrestricted submarine warfare",
+      clue: "Germany announces that its U-boats will sink any ship around Britain without warning.",
+      why: "Germany hoped to cut off Britain's food and supplies. The Allies fought back with convoys and early sonar.",
+      hints: ["It follows the Lusitania. Germany now decides U-boats can attack any ship near Britain.", "It happens in the same year as Vimy Ridge and Passchendaele."] },
+    { id: "vimy", year: 1917, when: "April 1917", theme: "fight", slides: "slides 115, 118",
+      title: "Battle of Vimy Ridge",
+      clue: "After a month of bombing and tunnels dug by engineers, Canadians attack on Easter Monday and take a ridge the French could not.",
+      why: "Canadians captured more prisoners, ground and artillery than any other British offensive. 3,500 died and 7,000 were wounded.",
+      hints: ["This comes after the Somme, and Byng was promoted for this victory.", "Vimy Ridge and Passchendaele happen in the same year."] },
+    { id: "msa", year: 1917, when: "August 1917", theme: "home", slides: "slide 167",
+      title: "Conscription: the Military Service Act",
+      clue: "Volunteers can no longer replace the dead and wounded, so the Prime Minister breaks a promise and forces men into service.",
+      why: "Borden had promised no conscription, but British PM Lloyd George convinced him more troops were needed.",
+      hints: ["It comes after years of heavy losses at Ypres and the Somme.", "It happens in the same year as Vimy Ridge and Passchendaele."] },
+    { id: "passchendaele", year: 1917, when: "October 1917", theme: "fight", slides: "slides 124, 127",
+      title: "Battle of Passchendaele",
+      clue: "Canadians are ordered to take a muddy ridge in Belgium. General Currie warns it will be costly.",
+      why: "Currie was the first Canadian to command Canadian troops. The Canadian Corps suffered 15,654 casualties in the muddiest battle of the war.",
+      hints: ["Byng was promoted after Vimy, and Currie replaced him before this battle.", "It happens in the same year as Vimy Ridge."] },
+    { id: "halifax", year: 1917, when: "December 1917", theme: "home", slides: "slide 157",
+      title: "The Halifax Disaster",
+      clue: "In Halifax harbour, a ship loaded with munitions is hit by another ship and explodes.",
+      why: "The blast destroyed much of the harbour, killed 2,000 to 3,000 people and injured 10,000.",
+      hints: ["It happens late in the year of Vimy Ridge.", "This is the same year as Vimy Ridge and Passchendaele."] },
+    { id: "vote", year: 1918, when: "1918 (in effect January 1919)", theme: "home", slides: "slide 162",
+      title: "Women win the federal vote",
+      clue: "Women across Canada gain the right to vote in federal elections, two years after Manitoba led the way.",
+      why: "Women's wartime work strengthened the argument. The vote took effect on January 1, 1919.",
+      hints: ["It comes two years after Manitoba led the way.", "It happens in the last year of the war."] }
+  ];
+  var BY = {}; EVENTS.forEach(function (e) { BY[e.id] = e; });
+  var PLAYABLE = EVENTS.filter(function (e) { return !e.anchor; });
+  var KEY = "wwi-timeline-builder-v2";
+
+  function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function shuffle(arr, seed) { var a = arr.slice(), r = rng(seed); for (var i = a.length - 1; i > 0; i--) { var j = Math.floor(r() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+  function truth(year) { return EVENTS.filter(function (e) { return e.year === year; }).map(function (e) { return e.id; }); }
+
+  function fresh() {
+    var seed = Math.floor(Math.random() * 100000) + 1;
+    var deck = shuffle(PLAYABLE.map(function (e) { return e.id; }), seed);
+    var placed = { assassination: 1914 };
+    var order = {};
+    YEARS.forEach(function (y) {
+      var t = truth(y), o = shuffle(t, seed + y);
+      if (o.length > 1 && o.join() === t.join()) o.push(o.shift());
+      order[y] = y === 1914 ? o : t;
+    });
+    return { stage: 1, deck: deck, placed: placed, tries: {}, hints: {}, revealed: {}, selected: deck[0], order: order, solved: { 1915: true, 1916: true, 1917: true, 1918: true }, checks: 0, assisted: false };
+  }
+  var S;
+  try { var raw = localStorage.getItem(KEY); S = raw ? JSON.parse(raw) : null; if (!S || !S.deck || !S.order || !S.placed) S = null; } catch (e) { S = null; }
+  if (!S) S = fresh();
+  var ui = { fb: {}, marks: {}, open: {}, justPlaced: null, orderMsg: "", copied: false };
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+  function tag(e) { return '<span class="tag th-' + e.theme + '"><i></i>' + THEMES[e.theme].name + '</span>'; }
+
+  /* ---------- actions ---------- */
+  function unplaced() { return S.deck.filter(function (id) { return S.placed[id] == null; }); }
+  function pickNext() { var u = unplaced(); S.selected = u.length ? u[0] : null; }
+  function place(id, year, revealed) {
+    var e = BY[id]; if (!e || S.placed[id] != null) return;
+    if (year === e.year) {
+      S.placed[id] = year;
+      if (revealed) S.revealed[id] = true;
+      ui.justPlaced = id; ui.open[id] = true;
+      var clean = !S.tries[id] && !S.hints[id] && !revealed;
+      ui.fb = { id: id, type: "good", html: '<strong>' + (revealed ? 'It was ' : 'Yes, ') + year + '.</strong> ' + esc(e.why) + ' <span class="label">(' + e.slides + ')</span>', clean: clean };
+      pickNext();
+      if (!unplaced().length) { S.stage = 2; ui.fb = {}; ui.orderMsg = ""; }
+    } else {
+      S.tries[id] = (S.tries[id] || 0) + 1;
+      var n = S.tries[id];
+      if (n >= 2) S.hints[id] = Math.max(S.hints[id] || 0, n >= 3 ? 2 : 1);
+      var dir = e.year > year ? "later" : "earlier";
+      ui.fb = { id: id, type: "warn", html: '<strong>Not quite.</strong> This happened ' + dir + ' than ' + year + '.' + (n === 1 ? ' Read the clue again, or ask for a hint.' : ' A hint is open below.') };
+    }
+    save(); render();
+  }
+  function hint(id) {
+    var e = BY[id]; S.hints[id] = Math.min((S.hints[id] || 0) + 1, e.hints.length); save(); render();
+  }
+  function move(year, id, dir) {
+    var a = S.order[year], i = a.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= a.length) return;
+    var t = a[i]; a[i] = a[j]; a[j] = t; ui.marks = {}; ui.orderMsg = ""; save(); render();
+  }
+  function checkOrder() {
+    S.checks++; ui.marks = {};
+    var good = 0, total = 0;
+    YEARS.forEach(function (y) {
+      if (S.solved[y]) return;
+      var t = truth(y), a = S.order[y], all = true;
+      a.forEach(function (id, i) { total++; if (id === t[i]) { ui.marks[id] = true; good++; } else all = false; });
+      if (all) S.solved[y] = true;
+    });
+    var left = YEARS.filter(function (y) { return !S.solved[y]; });
+    if (!left.length) { S.stage = 3; ui.orderMsg = ""; }
+    else ui.orderMsg = good + ' of ' + total + ' cards in 1914 are in the right spot. Think cause and effect: what had to happen first?';
+    save(); render();
+  }
+  function showOrder() { S.assisted = true; YEARS.forEach(function (y) { S.order[y] = truth(y); S.solved[y] = true; }); S.stage = 3; save(); render(); }
+  function reset() { S = fresh(); ui = { fb: {}, marks: {}, open: {}, justPlaced: null, orderMsg: "", copied: false }; save(); render(); window.scrollTo(0, 0); }
+
+  function timelineText() {
+    var out = ["WWI timeline (from the outbreak to the home front)"];
+    YEARS.forEach(function (y) {
+      var ev = EVENTS.filter(function (e) { return e.year === y; });
+      out.push("", String(y));
+      ev.forEach(function (e) { out.push("- " + e.when + ": " + e.title); });
+    });
+    return out.join("\n");
+  }
+  function copyTimeline() {
+    var text = timelineText();
+    function done() { ui.copied = true; render(); setTimeout(function () { ui.copied = false; render(); }, 2500); }
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+    function fallback() {
+      var ta = document.createElement("textarea"); ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); done(); } catch (e) {} document.body.removeChild(ta);
+    }
+  }
+
+  /* ---------- rendering ---------- */
+  function renderSteps() {
+    var names = ["1 Place by year", "2 Order 1914", "3 Your timeline"];
+    $("steps").innerHTML = names.map(function (n, i) {
+      var c = S.stage === i + 1 ? "on" : (S.stage > i + 1 ? "done" : "");
+      return '<li class="' + c + '"' + (S.stage === i + 1 ? ' aria-current="step"' : '') + '>' + n + '</li>';
+    }).join("");
+    var placed = Object.keys(S.placed).length, total = EVENTS.length, pct;
+    var multi = [1914];
+    var solved = multi.filter(function (y) { return S.solved[y]; }).length;
+    if (S.stage === 1) { pct = Math.round(placed / total * 50); $("plabel").textContent = placed + " of " + total + " events placed"; $("pstage").textContent = "Step 1 of 3"; }
+    else if (S.stage === 2) { pct = 50 + Math.round(solved / multi.length * 50); $("plabel").textContent = solved ? "1914 is in order" : "1914 needs to be put in order"; $("pstage").textContent = "Step 2 of 3"; }
+    else { pct = 100; $("plabel").textContent = "Timeline complete"; $("pstage").textContent = "Step 3 of 3"; }
+    $("pfill").style.width = pct + "%"; $("pbar").setAttribute("aria-valuenow", pct);
+  }
+
+  function renderMain() {
+    var h = "";
+    if (S.stage === 1) {
+      var u = unplaced(), sel = S.selected && BY[S.selected];
+      h += '<div class="stage1">';
+      h += '<section class="panel deck" aria-label="Event deck"><span class="label">Event deck</span><h2>' + u.length + ' event' + (u.length === 1 ? '' : 's') + ' left</h2><ul class="deck-list">';
+      u.forEach(function (id) {
+        var e = BY[id];
+        h += '<li><button type="button" class="deck-item" draggable="true" data-act="select" data-id="' + id + '" aria-pressed="' + (S.selected === id) + '"><b>' + esc(e.title) + '</b>' + tag(e) + '</button></li>';
+      });
+      h += '</ul></section>';
+      h += '<section class="panel insp" aria-label="Selected event">';
+      if (sel) {
+        var shown = (S.hints[sel.id] || 0);
+        h += '<span class="label">Where does this go?</span><h3>' + esc(sel.title) + '</h3><div>' + tag(sel) + '</div>';
+        h += '<p class="clue" style="margin-top:10px">' + esc(sel.clue) + '</p>';
+        h += '<div class="ybtns" role="group" aria-label="Choose a year">' + YEARS.map(function (y) { return '<button type="button" class="ybtn" data-act="place" data-y="' + y + '">' + y + '</button>'; }).join("") + '</div>';
+        var fb = ui.fb && ui.fb.id ? ui.fb : null;
+        var showFb = fb && (fb.type === "good" || fb.id === sel.id);
+        h += '<div class="fb ' + (showFb ? fb.type : '') + '" aria-live="polite">' + (showFb ? fb.html : 'Choose a year, or drag this card onto a year below.') + '</div>';
+        if (shown) { h += '<ul class="hints">' + sel.hints.slice(0, shown).map(function (t) { return '<li><b>Hint:</b> ' + esc(t) + '</li>'; }).join("") + '</ul>'; }
+        h += '<div class="actions">';
+        if (shown < sel.hints.length) h += '<button type="button" class="btn" data-act="hint">Give me a hint</button>';
+        if ((S.tries[sel.id] || 0) >= 3) h += '<button type="button" class="btn" data-act="show">Show me the year</button>';
+        h += '</div>';
+        h += '<p class="hint-line">Anchor: the assassination is already on the timeline for 1914.</p>';
+      }
+      h += '</section></div>';
+    } else if (S.stage === 2) {
+      h += '<section class="panel"><span class="label">Step 2</span><h2>Put 1914 in order</h2>';
+      h += '<p style="margin:8px 0 12px;max-width:64ch">Every event is on the right year. 1914 had a lot happening, so put its events in order. Use the arrows to move cards earlier or later, then check. Cards in the right spot get a tick. The other years are already sorted for you.</p>';
+      h += '<div class="actions" style="margin-top:0"><button type="button" class="btn primary" data-act="check">Check order</button>';
+      if (S.checks >= 3) h += '<button type="button" class="btn" data-act="showorder">Show me the order</button>';
+      h += '</div>';
+      h += '<div class="fb ' + (ui.orderMsg ? 'warn' : '') + '" style="margin-top:12px" aria-live="polite">' + (ui.orderMsg ? esc(ui.orderMsg) : (S.checks ? 'Keep going.' : 'Start with the event you are most sure about, then work out what had to happen before and after it.')) + '</div>';
+      h += '</section>';
+    } else {
+      var played = PLAYABLE, clean = played.filter(function (e) { return !S.tries[e.id] && !S.hints[e.id] && !S.revealed[e.id]; });
+      var review = played.filter(function (e) { return (S.tries[e.id] || 0) >= 2 || S.revealed[e.id]; });
+      h += '<div class="results">';
+      h += '<section class="panel"><span class="label">Step 3</span><h2>Your timeline is complete</h2>';
+      h += '<p style="margin:10px 0 0"><span class="big">' + clean.length + '</span> <span style="font-size:1.1rem">of ' + played.length + ' events placed on the first try, with no hints.</span></p>';
+      h += '<p style="margin:8px 0 0;color:var(--muted)">Order checks used: ' + S.checks + (S.assisted ? '. The order was revealed.' : '.') + '</p>';
+      h += '<div class="themes">' + Object.keys(THEMES).map(function (k) {
+        var all = played.filter(function (e) { return e.theme === k; }), ok = all.filter(function (e) { return clean.indexOf(e) > -1; });
+        return '<div class="trow th-' + k + '"><span class="tag"><i></i>' + THEMES[k].name + '</span><span class="meter"><i style="width:' + Math.round(ok.length / all.length * 100) + '%"></i></span><span class="label">' + ok.length + '/' + all.length + '</span></div>';
+      }).join("") + '</div>';
+      h += '<div class="actions"><button type="button" class="btn primary" data-act="copy">Copy my timeline</button><button type="button" class="btn" data-act="reset">Play again</button>' + (ui.copied ? '<span class="copied">Copied. Paste it into your notes.</span>' : '') + '</div>';
+      h += '</section>';
+      h += '<section class="panel"><span class="label">Worth another look</span><h2>Events to review</h2>';
+      if (review.length) {
+        h += '<ul class="review">' + review.map(function (e) { return '<li><span style="font-family:var(--font-body);font-size:.95rem;color:var(--fg)">' + esc(e.title) + '</span><span>' + e.slides + '</span></li>'; }).join("") + '</ul>';
+      } else { h += '<p style="margin:10px 0 0">Nothing needed a second look. Open any card below to read why it mattered.</p>'; }
+      h += '</section></div>';
+    }
+    $("main").innerHTML = h;
+  }
+
+  function renderRail() {
+    var h = "";
+    YEARS.forEach(function (y) {
+      var ids = S.stage === 1 ? EVENTS.filter(function (e) { return S.placed[e.id] === y; }).map(function (e) { return e.id; }) : S.order[y];
+      h += '<div class="year" data-year="' + y + '" role="group" aria-label="' + y + '"><div class="yhead"><b>' + y + '</b><span class="count">' + ids.length + ' event' + (ids.length === 1 ? '' : 's') + '</span></div>';
+      if (!ids.length) h += '<div class="placeholder">' + (S.stage === 1 ? 'Drop events here' : '') + '</div>';
+      ids.forEach(function (id, i) {
+        var e = BY[id], locked = S.stage === 3 || S.solved[y] || (S.stage === 1);
+        var cls = "ev" + (ui.justPlaced === id && S.stage === 1 ? " new" : "") + (ui.marks[id] ? " ok" : "") + (S.stage === 3 || S.solved[y] ? " locked" : "");
+        h += '<article class="' + cls + '"><div>' + tag(e) + '</div><h4>' + esc(e.title) + '</h4>';
+        if (S.stage === 3 || (S.stage === 2 && S.solved[y] && y === 1914)) h += '<span class="when">' + esc(e.when) + '</span>';
+        if (S.stage === 2 && !S.solved[y]) {
+          h += '<span class="mark">' + (ui.marks[id] ? '&#10003; right spot' : '') + '</span>';
+          h += '<p class="why" style="color:var(--muted)">' + esc(e.clue) + '</p>';
+          h += '<div class="mv"><button type="button" data-act="up" data-y="' + y + '" data-id="' + id + '" aria-label="Move earlier: ' + esc(e.title) + '"' + (i === 0 ? ' disabled' : '') + '>&#9650;</button><button type="button" data-act="down" data-y="' + y + '" data-id="' + id + '" aria-label="Move later: ' + esc(e.title) + '"' + (i === ids.length - 1 ? ' disabled' : '') + '>&#9660;</button></div>';
+        } else {
+          var open = !!ui.open[id];
+          h += '<button type="button" class="toggle" data-act="toggle" data-id="' + id + '" aria-expanded="' + open + '">' + (open ? 'Hide' : 'Why it mattered') + '</button>';
+          if (open) h += '<p class="why">' + esc(e.why) + '<small>' + e.slides + '</small></p>';
+        }
+        h += '</article>';
+      });
+      h += '</div>';
+    });
+    $("rail").innerHTML = h;
+    ui.justPlaced = null;
+  }
+
+  function render() { renderSteps(); renderMain(); renderRail(); }
+
+  /* ---------- events ---------- */
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest("[data-act]"); if (!t) return;
+    var act = t.getAttribute("data-act"), id = t.getAttribute("data-id");
+    if (act === "select") { S.selected = id; save(); render(); }
+    else if (act === "place") { if (S.selected) place(S.selected, +t.getAttribute("data-y")); }
+    else if (act === "hint") { if (S.selected) hint(S.selected); }
+    else if (act === "show") { if (S.selected) place(S.selected, BY[S.selected].year, true); }
+    else if (act === "up") move(+t.getAttribute("data-y"), id, -1);
+    else if (act === "down") move(+t.getAttribute("data-y"), id, 1);
+    else if (act === "check") checkOrder();
+    else if (act === "showorder") showOrder();
+    else if (act === "toggle") { ui.open[id] = !ui.open[id]; render(); }
+    else if (act === "copy") copyTimeline();
+    else if (act === "reset") reset();
+  });
+  $("reset").addEventListener("click", reset);
+
+  var dragId = null;
+  document.addEventListener("dragstart", function (ev) {
+    var t = ev.target.closest && ev.target.closest(".deck-item"); if (!t) return;
+    dragId = t.getAttribute("data-id"); S.selected = dragId;
+    try { ev.dataTransfer.setData("text/plain", dragId); ev.dataTransfer.effectAllowed = "move"; } catch (e) {}
+  });
+  document.addEventListener("dragover", function (ev) {
+    var y = ev.target.closest && ev.target.closest(".year"); if (!y || S.stage !== 1 || !dragId) return;
+    ev.preventDefault(); y.classList.add("over");
+  });
+  document.addEventListener("dragleave", function (ev) {
+    var y = ev.target.closest && ev.target.closest(".year"); if (y && !y.contains(ev.relatedTarget)) y.classList.remove("over");
+  });
+  document.addEventListener("drop", function (ev) {
+    var y = ev.target.closest && ev.target.closest(".year"); if (!y || S.stage !== 1 || !dragId) return;
+    ev.preventDefault(); var id = dragId; dragId = null; place(id, +y.getAttribute("data-year"));
+  });
+  document.addEventListener("dragend", function () { dragId = null; var o = document.querySelectorAll(".year.over"); for (var i = 0; i < o.length; i++) o[i].classList.remove("over"); });
+
+  if (S.stage === 1 && (!S.selected || S.placed[S.selected] != null)) pickNext();
+  render();
+})();
+</script>
+</body>
+</html>
